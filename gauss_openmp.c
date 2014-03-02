@@ -188,9 +188,11 @@ void gauss() {
 
   /* Gaussian elimination */
   for (norm = 0; norm < N - 1; norm++) {
+    #pragma omp parallel num_threads(16)
+    #pragma omp for schedule(runtime)
     for (row = norm + 1; row < N; row++) {
       multiplier = A[row][norm] / A[norm][norm];
-      #pragma omp parallel num_threads(4)
+      #pragma omp parallel num_threads(16)
       #pragma omp for
       for (col = norm; col < N; col++) {
 	A[row][col] -= A[norm][col] * multiplier;
@@ -204,6 +206,8 @@ void gauss() {
 
 
   /* Back substitution */
+  #pragma omp parallel num_threads(16)
+  #pragma omp for
   for (row = N - 1; row >= 0; row--) {
     X[row] = B[row];
     for (col = N-1; col > row; col--) {
