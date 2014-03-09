@@ -172,6 +172,48 @@ int main(int argc, char **argv) {
 /* Provided global variables are MAXN, N, A[][] and B[][],
  * defined in the beginning of this code.  B[][] is initialized to zeros.
  */
+
+__global__ void gpuColNorm(float *X, int col){
+  //int row = blockIdx.y*blockDim.y + threadIdx.y;
+  //int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+  float mu = 0.0;
+  float sigma = 0.0;
+  for (int n=0; n<N; n++)
+    mu += X[n];
+  mu /= (float) N;
+  sigma = 0.0;
+  for (n=0; n < N; n++)
+    sigma += powf(X[n] - mu, 2.0);
+  sigma /= (float) N;
+  sigma = powf(sigma,0.5);
+  for (n=0; n < N; n++) {
+    if (sigma == 0.0)
+      B[row][col] = 0.0;
+    else
+      B[row][col] = (X[n] - mu) / sigma;
+  }
+}
+
+void matrixNorm() {
+  int col;
+  int size = N*sizeof(float);
+
+  printf("Computing in parallel.\n");
+
+  for (col=0; col < N; col++) {
+    float *X, *colA;
+    colA = new float[N];
+    for (int i=0; i<N; i++)
+      colA[i]=A[i][col];
+    cudaMalloc(&X, size);
+    cudaMemcopy(X,colA,size,cudaMemcpyHostToDevice);
+    
+    gpuColNorm(X, col);
+  }
+}
+
+/*
 void matrixNorm() {
   int row, col; 
   float mu, sigma; // Mean and Standard Deviation
@@ -187,6 +229,7 @@ void matrixNorm() {
         for (row=0; row < N; row++)
             sigma += powf(A[row][col] - mu, 2.0);
         sigma /= (float) N;
+        sigma = powf(sigma,0.5);
         for (row=0; row < N; row++) {
             if (sigma == 0.0)
                 B[row][col] = 0.0;
@@ -196,3 +239,4 @@ void matrixNorm() {
     }
 
 }
+*/

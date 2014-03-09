@@ -16,7 +16,7 @@
 #include <time.h>
 
 /* Program Parameters */
-#define MAXN 8000  /* Max value of N */
+#define MAXN 800  /* Max value of N */
 int N;  /* Matrix size */
 
 /* Matrices */
@@ -172,6 +172,74 @@ int main(int argc, char **argv) {
 /* Provided global variables are MAXN, N, A[][] and B[][],
  * defined in the beginning of this code.  B[][] is initialized to zeros.
  */
+
+#define BLOCK_SIZE 16
+
+__global__ void gpuColNorm(float *X, float *Y, int maxN, int gpuN){
+  int row = blockIdx.y*blockDim.y + threadIdx.y;
+  int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __shared__ float musigma[2*MAXN];//*mu = new float [gpuN];
+  //extern __shared__ float sigma[];
+  
+  for (int n=0; n< gpuN; n++)
+    musigma[col]+= X[n*maxN + col];
+  musigma[col] /= (float) gpuN;
+  //Y[col] = musigma[col];
+  musigma[col+maxN] = 0.0;
+  for (int n=0; n < gpuN; n++)
+    musigma[col+maxN] += powf(X[n*maxN + col] - musigma[col], 2.0);
+  musigma[col+maxN] /= (float) gpuN;
+  musigma[col+maxN] = powf(musigma[col+maxN],0.5);
+  for (int n=0; n < gpuN; n++) {
+    if (musigma[col+maxN] == 0.0)
+      Y[n*maxN + col] = 0.0;
+    else
+      Y[n*maxN + col] = (X[n*maxN + col] - musigma[col]) / musigma[col+maxN];
+  }
+  
+  //Y[row*maxN+col]= (float) (col);
+  //Y[row*gpuN+col]=X[row*gpuN+col];
+}
+
+void matrixNorm() {
+  //int col;
+  int size = MAXN*MAXN*sizeof(float);
+  int sharedsize = 2*MAXN*sizeof(float);
+  int K = ceil(((float)N)/((float)BLOCK_SIZE));
+
+  dim3 threadBlock(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 grid(K, K);
+
+  printf("Computing in parallel.\n");
+  printf("K=%i.\n",K);
+
+  //for (col=0; col < N; col++) {
+    float *X, *Y;
+    //volatile float *hstA, *hstB;
+    //hstA = &(A[0][0]);
+    //hstB = &(B[0][0]);
+    //hstA = new float[N*N];
+    //hstB = new float[N*N];
+    //for (int i=0; i<N; i++)
+      //colA[i]=A[i][col];
+    cudaMalloc(&X, size);
+    cudaMalloc(&Y, size);
+    cudaMemcpy(X,(void **)A,size,cudaMemcpyHostToDevice);
+    cudaMemcpy(Y,(void **)B,size,cudaMemcpyHostToDevice);
+    
+    gpuColNorm<<<grid, threadBlock, sharedsize>>>(X, Y, MAXN, N);
+    
+    cudaMemcpy((void **)B,Y,size,cudaMemcpyDeviceToHost);
+    //printf("B[0]= %d \n",B[0]);
+    //printf("B[0][0]= %d \n",B[0][0]);
+    //for (int i=0; i<N; i++) 
+      //B[i][col]=colB[i];
+  //}
+}
+
+
+/*
 void matrixNorm() {
   int row, col; 
   float mu, sigma; // Mean and Standard Deviation
@@ -197,3 +265,4 @@ void matrixNorm() {
     }
 
 }
+*/

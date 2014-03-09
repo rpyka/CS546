@@ -168,10 +168,117 @@ int main(int argc, char **argv) {
 
 /* ------------------ Above Was Provided --------------------- */
 
-/****** You will replace this routine with your own parallel version *******/
+/***i*** You will replace this routine with your own parallel version *******/
 /* Provided global variables are MAXN, N, A[][] and B[][],
  * defined in the beginning of this code.  B[][] is initialized to zeros.
  */
+
+#include <thrust/reduce.h>
+#include <thrust/fill.h>
+#include <thrust/transform.h>
+#include <thrust/functional.h>
+#include <thrust/device_vector.h>
+/*
+#define BLOCK_SIZE 16
+
+__global__ void gpuColNorm(float *X, float *Y, int gpuN){
+  int row = blockIdx.y*blockDim.y + threadIdx.y;
+  //int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+  float mu = 0.0;
+  float sigma = 0.0;
+  for (int n=0; n< gpuN; n++)
+    mu += X[n];
+  mu /= (float) gpuN;
+  sigma = 0.0;
+  for (int n=0; n < gpuN; n++)
+    sigma += powf(X[n] - mu, 2.0);
+  sigma /= (float) gpuN;
+  sigma = powf(sigma,0.5);
+  for (int n=0; n < gpuN; n++) {
+    if (sigma == 0.0)
+      Y[n] = 0.0;
+    else
+      Y[n] = (X[n] - mu) / sigma;
+  }
+}
+*/
+
+struct pow_functor {
+  const float a;
+
+  pow_functor(float _a) : a(_a) {}
+
+  __host__ __device__
+    float operator()(const float& x, const float& y) const {
+      return powf(x, a);
+    }
+};
+
+void matrixNorm() {
+  int col;
+
+  printf("Computing in parallel.\n");
+
+  for (col=0; col < N; col++) {
+    thrust::host_vector<float> H(N);
+    for (int i=0; i<N; i++)
+      H[i]=A[i][col];
+    thrust::device_vector<float> X = H;
+    thrust::device_vector<float> T(N);//used for temporary data
+    //thrust::device_vector<float> U(N);//used for temporary data
+    thrust::device_vector<float> V(N);//used for temporary data
+    float mu = thrust::reduce(X.begin(), X.end(), (float) 0.0, thrust::plus<float>());
+    mu /= (float) N;
+    thrust::fill(T.begin(), T.end(), mu);
+    thrust::transform(X.begin(), X.end(), T.begin(), T.begin(), thrust::minus<float>());
+    //thrust::fill(T.begin(), T.end(), 2);
+    thrust::transform(T.begin(), T.end(), T.begin(), V.begin(), pow_functor(2));
+    float sigma = thrust::reduce(V.begin(), V.end(), (float) 0, thrust::plus<float>());
+    sigma /= (float) N;
+    sigma = powf(sigma, 0.5);
+    if (sigma==0.0)
+      for (int i=0; i<N; i++)
+        B[i][col]=0.0;
+    else {
+      for (int i=0; i<N; i++)
+        B[i][col]=T[i]/sigma;
+     }
+  }
+}
+
+/*
+void matrixNorm() {
+  int col;
+  int size = N*sizeof(float);
+  int K = N/16;
+
+  dim3 threadBlock(1,BLOCK_SIZE);
+  dim3 grid(1,N);
+
+  printf("Computing in parallel.\n");
+
+  for (col=0; col < N; col++) {
+    float *X, *Y, *colA, *colB;
+    colA = new float[N];
+    colB = new float[N];
+    for (int i=0; i<N; i++)
+      colA[i]=A[i][col];
+    cudaMalloc(&X, size);
+    cudaMalloc(&Y, size);
+    cudaMemcpy(X,colA,size,cudaMemcpyHostToDevice);
+    cudaMemcpy(Y,colB,size,cudaMemcpyHostToDevice);
+    
+    gpuColNorm<<<grid, threadBlock>>>(X, Y, N);
+    
+    cudaMemcpy(colB,Y,size,cudaMemcpyDeviceToHost);
+    for (int i=0; i<N; i++) 
+      B[i][col]=colB[i];
+  }
+}
+*/
+
+/*
 void matrixNorm() {
   int row, col; 
   float mu, sigma; // Mean and Standard Deviation
@@ -197,3 +304,4 @@ void matrixNorm() {
     }
 
 }
+*/
